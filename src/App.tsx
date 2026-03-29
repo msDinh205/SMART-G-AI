@@ -1,10 +1,45 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
-import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon, FileText, Presentation } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
-import { generateDocxReport, generatePptxReport } from './utils/reportGenerator';
+import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area } from 'recharts';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+/**
+ * Utility for generating DOCX and PPTX reports via window globals.
+ */
+const generateDocxReport = async (studentId: string, analyticsData: any, messages: any[]) => {
+  const docx = (window as any).docx;
+  if (!docx) return alert('Thư viện DOCX chưa tải xong, vui lòng thử lại!');
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = docx;
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph({ text: "BÁO CÁO TÂM LÝ HỌC SINH", heading: HeadingLevel.HEADING_1, alignment: "center" }),
+        new Paragraph({ children: [new TextRun({ text: `Học sinh: ${studentId}`, bold: true })] }),
+        new Paragraph({ text: `\nChủ đề: ${analyticsData.topic}` }),
+        new Paragraph({ text: `Cảm xúc: ${analyticsData.emotionAnalysis}` }),
+        ...analyticsData.teacherSuggestions.map((s: string) => new Paragraph({ text: `• ${s}` })),
+      ],
+    }],
+  });
+  const blob = await Packer.toBlob(doc);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `Bao_cao_${studentId}.docx`;
+  link.click();
+};
+
+const generatePptxReport = async (studentId: string, analyticsData: any) => {
+  const PptxGenJS = (window as any).PptxGenJS;
+  if (!PptxGenJS) return alert('Thư viện PowerPoint chưa tải xong, vui lòng thử lại!');
+  const pptx = new PptxGenJS();
+  let slide = pptx.addSlide();
+  slide.addText("BÁO CÁO TÂM LÝ", { x: 0.5, y: 0.5, w: 9, h: 1, fontSize: 24, bold: true });
+  slide.addText(`Học sinh: ${studentId}`, { x: 0.5, y: 1.5, w: 9, h: 0.5, fontSize: 18 });
+  slide.addText(analyticsData.emotionAnalysis, { x: 0.5, y: 2.5, w: 9, h: 2, fontSize: 14 });
+  pptx.writeFile({ fileName: `Bao_cao_${studentId}.pptx` });
+};
+
+const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY as string) || '' });
 
 interface AnalysisResult {
   chatReply: string;
@@ -854,7 +889,7 @@ Yêu cầu đầu ra (JSON):
                         disabled={!latestAnalysis}
                         className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
                       >
-                        <FileText className="w-5 h-5" />
+                        <Activity className="w-5 h-5" />
                         Tải Word (.docx)
                       </button>
                       <button 
@@ -862,7 +897,7 @@ Yêu cầu đầu ra (JSON):
                         disabled={!latestAnalysis}
                         className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 disabled:opacity-50"
                       >
-                        <Presentation className="w-5 h-5" />
+                        <ShieldCheck className="w-5 h-5" />
                         Tải PowerPoint (.pptx)
                       </button>
                     </div>
