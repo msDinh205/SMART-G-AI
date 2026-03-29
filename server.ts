@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
+import fs from "fs";
 
 interface AnalysisResult {
   chatReply: string;
@@ -35,15 +36,40 @@ interface User {
   points: number;
 }
 
-// In-memory store (Real data for the current session)
-const messages: Message[] = [];
-const users: Record<string, User> = {};
+
+// --- PERSISTENCE ---
+
+const DATA_FILE = path.join(process.cwd(), "data.json");
+
+function loadData() {
+  if (fs.existsSync(DATA_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+    } catch (e) {
+      console.error("Error loading data:", e);
+    }
+  }
+  return { messages: [], users: {} };
+}
+
+function saveData(data: { messages: any[]; users: any }) {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("Error saving data:", e);
+  }
+}
+
+const initialData = loadData();
+const messages: Message[] = initialData.messages;
+const users: Record<string, User> = initialData.users;
 
 // Default Teacher Account
 const TEACHER_ACCOUNTS: Record<string, string> = {
   'GV001': 'admin123',
   'VTDINH': 'vtdinh2026'
 };
+
 
 async function startServer() {
   const app = express();
@@ -76,7 +102,9 @@ async function startServer() {
     }
     users[id].totalAccesses += 1;
     users[id].lastActive = new Date();
+    saveData({ messages, users });
     res.json(users[id]);
+
   });
 
   // Save Message
@@ -94,7 +122,9 @@ async function startServer() {
       users[message.studentId].points += 10; // Award 10 points per message
     }
     
+    saveData({ messages, users });
     res.json(message);
+
   });
 
   // Get Messages for a student

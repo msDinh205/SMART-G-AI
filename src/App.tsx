@@ -1,57 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
-import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon, Thermometer } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area } from 'recharts';
+import { analyzeStudentMessage, AnalysisResult } from './services/aiService';
+import MoodTree from './components/MoodTree';
+import RiskHeatmap from './components/RiskHeatmap';
+
+
 
 /**
  * Utility for generating DOCX and PPTX reports via window globals.
  */
-const generateDocxReport = async (studentId: string, analyticsData: any, messages: any[]) => {
-  const docx = (window as any).docx;
-  if (!docx) return alert('Thư viện DOCX chưa tải xong, vui lòng thử lại!');
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = docx;
-  const doc = new Document({
-    sections: [{
-      children: [
-        new Paragraph({ text: "BÁO CÁO TÂM LÝ HỌC SINH", heading: HeadingLevel.HEADING_1, alignment: "center" }),
-        new Paragraph({ children: [new TextRun({ text: `Học sinh: ${studentId}`, bold: true })] }),
-        new Paragraph({ text: `\nChủ đề: ${analyticsData.topic}` }),
-        new Paragraph({ text: `Cảm xúc: ${analyticsData.emotionAnalysis}` }),
-        ...analyticsData.teacherSuggestions.map((s: string) => new Paragraph({ text: `• ${s}` })),
-      ],
-    }],
-  });
-  const blob = await Packer.toBlob(doc);
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `Bao_cao_${studentId}.docx`;
-  link.click();
-};
+import { generateDocxReport, generatePptxReport } from './utils/reportGenerator';
 
-const generatePptxReport = async (studentId: string, analyticsData: any) => {
-  const PptxGenJS = (window as any).PptxGenJS;
-  if (!PptxGenJS) return alert('Thư viện PowerPoint chưa tải xong, vui lòng thử lại!');
-  const pptx = new PptxGenJS();
-  let slide = pptx.addSlide();
-  slide.addText("BÁO CÁO TÂM LÝ", { x: 0.5, y: 0.5, w: 9, h: 1, fontSize: 24, bold: true });
-  slide.addText(`Học sinh: ${studentId}`, { x: 0.5, y: 1.5, w: 9, h: 0.5, fontSize: 18 });
-  slide.addText(analyticsData.emotionAnalysis, { x: 0.5, y: 2.5, w: 9, h: 2, fontSize: 14 });
-  pptx.writeFile({ fileName: `Bao_cao_${studentId}.pptx` });
-};
-
-const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY as string) || '' });
-
-interface AnalysisResult {
-  chatReply: string;
-  emotionAnalysis: string;
-  level: number;
-  levelName: string;
-  studentAdvice: string[];
-  requiresTeacherIntervention: boolean;
-  teacherWarning: string;
-  teacherSuggestions: string[];
-  topic: 'Áp lực học tập' | 'Nhớ nhà / Gia đình' | 'Xích mích bạn bè' | 'Tình cảm tuổi teen' | 'Khác';
-}
 
 interface Message {
   id: string;
@@ -61,6 +21,7 @@ interface Message {
   timestamp?: any;
   studentId?: string;
 }
+
 
 export default function App() {
   const [role, setRole] = useState<'student' | 'teacher'>('student');
@@ -366,56 +327,19 @@ export default function App() {
       localStorage.setItem(`msgs_${loggedInStudent}`, JSON.stringify([...currentMsgs, userMsg]));
       localStorage.setItem(`points_${loggedInStudent}`, String(studentPoints + 10));
 
-      if (!chatRef.current) {
-        const systemInstruction = `Bạn là "Mầm Xanh", một chuyên gia tâm lý học đường thân thiện, thấu cảm, đóng vai như một người anh/chị/thầy/cô gần gũi. Bạn đang trò chuyện với một học sinh nội trú vùng cao (Mã HS: ${loggedInStudent}).
-Nhiệm vụ: Lắng nghe, thấu hiểu, dùng ngôn từ mộc mạc, ấm áp, có thể dùng các hình ảnh ẩn dụ về thiên nhiên vùng cao (như cây rừng, sương sớm, nương ngô, mặt trời...) để động viên các em. Đồng thời, đánh giá ngầm mức độ nguy cơ bạo lực để báo giáo viên.
+      const history = messages.map(m => ({
+        role: m.sender === 'student' ? 'user' : 'model',
+        parts: [{ text: m.text }]
+      }));
 
-Quy trình phân tích mức độ:
-Mức độ 1 (Xanh): Bình thường, tâm sự nhẹ nhàng, nhớ nhà, áp lực học tập.
-Mức độ 2 (Vàng): Xích mích nhỏ, hiểu lầm bạn bè, có thể tự giải quyết.
-Mức độ 3 (Cam): Nguy cơ bạo lực, bị cô lập, bắt nạt. BẮT BUỘC báo giáo viên.
-Mức độ 4 (Đỏ): Bạo lực sắp/đang xảy ra, đe dọa an toàn. BẮT BUỘC báo giáo viên khẩn cấp.
+      const parsedResult = await analyzeStudentMessage(
+        effectiveApiKey,
+        loggedInStudent,
+        userMsg.text,
+        history
+      );
 
-Yêu cầu đầu ra (JSON):
-- chatReply: Câu trả lời trực tiếp, tự nhiên, thấu cảm, xưng "Mầm Xanh" hoặc "thầy/cô" và gọi "em".
-- emotionAnalysis: Nhận diện cảm xúc hiện tại của học sinh.
-- level: Mức độ từ 1 đến 4.
-- levelName: Tên mức độ (Xanh, Vàng, Cam, Đỏ).
-- studentAdvice: 03 lời khuyên thiết thực, ngắn gọn, dễ hiểu để em tự tháo gỡ.
-- requiresTeacherIntervention: true (nếu mức 3, 4), false (nếu mức 1, 2).
-- teacherWarning: Cảnh báo chuyên môn dành cho giáo viên.
-- teacherSuggestions: 03 bước can thiệp cho giáo viên.
-- topic: Chọn một trong các chủ đề sau: "Áp lực học tập", "Nhớ nhà / Gia đình", "Xích mích bạn bè", "Tình cảm tuổi teen", "Khác".`;
-
-        chatRef.current = new GoogleGenAI({ apiKey: effectiveApiKey }).chats.create({
-          model: 'gemini-1.5-flash',
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                chatReply: { type: Type.STRING, description: "Câu trả lời chat tự nhiên với học sinh" },
-                emotionAnalysis: { type: Type.STRING, description: "Phân tích cảm xúc của học sinh" },
-                level: { type: Type.INTEGER, description: "Mức độ từ 1 đến 4" },
-                levelName: { type: Type.STRING, description: "Tên mức độ: Xanh, Vàng, Cam, hoặc Đỏ" },
-                studentAdvice: { type: Type.ARRAY, items: { type: Type.STRING }, description: "03 lời khuyên trực tiếp cho học sinh" },
-                requiresTeacherIntervention: { type: Type.BOOLEAN, description: "Đánh dấu true nếu tình huống có nguy cơ bạo lực (mức 3, 4)" },
-                teacherWarning: { type: Type.STRING, description: "Cảnh báo chuyên môn cho giáo viên" },
-                teacherSuggestions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "03 bước can thiệp cho giáo viên" },
-                topic: { type: Type.STRING, enum: ["Áp lực học tập", "Nhớ nhà / Gia đình", "Xích mích bạn bè", "Tình cảm tuổi teen", "Khác"], description: "Chủ đề chính của cuộc trò chuyện" }
-              },
-              required: ["chatReply", "emotionAnalysis", "level", "levelName", "studentAdvice", "requiresTeacherIntervention", "teacherWarning", "teacherSuggestions", "topic"]
-            }
-          }
-        });
-      }
-
-      const response = await chatRef.current.sendMessage({ message: userMsg.text });
-
-      if (response.text) {
-        const parsedResult = JSON.parse(response.text) as AnalysisResult;
-        
+      if (parsedResult) {
         // Save AI Response to API
         await fetch('/api/messages', {
           method: 'POST',
@@ -455,10 +379,9 @@ Yêu cầu đầu ra (JSON):
         if (parsedResult.requiresTeacherIntervention && actionStatus === 'idle') {
           setActionStatus('sent');
         }
-      } else {
-        throw new Error("Không nhận được phản hồi từ hệ thống.");
       }
     } catch (err: any) {
+
       console.error(err);
       let errorMsg = "Đã xảy ra lỗi kết nối. Em thử gửi lại nhé!";
       const errString = err.toString();
@@ -701,6 +624,17 @@ Yêu cầu đầu ra (JSON):
                       </div>
                     </div>
                   </div>
+
+                  {/* Mood Tree Visualization */}
+                  <div className="px-5 py-2">
+                    <MoodTree 
+                      points={studentPoints} 
+                      level={studentLevel} 
+                      emotion={latestAnalysis?.emotionAnalysis}
+                      isAnalyzing={isAnalyzing}
+                    />
+                  </div>
+
 
                   {/* Messages Area */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-[#FAFAFA] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
@@ -949,32 +883,10 @@ Yêu cầu đầu ra (JSON):
                   </div>
                 </div>
 
-                {/* Dashboard Nâng cao: Xu hướng tâm lý */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                  <div className="bg-white rounded-[2rem] border-2 border-gray-100 p-6 shadow-sm">
-                    <h3 className="text-lg font-bold text-gray-800 font-heading mb-6 flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-indigo-600" />
-                      Chỉ số tích cực theo tuần
-                    </h3>
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={sentimentTrend}>
-                          <defs>
-                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-                          <YAxis hide />
-                          <Tooltip 
-                            contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                          />
-                          <Area type="monotone" dataKey="value" stroke="#6366f1" fillOpacity={1} fill="url(#colorValue)" strokeWidth={3} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                {/* Dashboard Nâng cao: Bản đồ nhiệt Nguy cơ */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                  <div className="lg:col-span-2">
+                    <RiskHeatmap messages={messages} />
                   </div>
 
                   <div className="bg-white rounded-[2rem] border-2 border-gray-100 p-6 shadow-sm flex flex-col justify-center items-center text-center">
@@ -987,7 +899,7 @@ Yêu cầu đầu ra (JSON):
                     </p>
                     <div className="flex flex-wrap justify-center gap-4">
                       <button 
-                        onClick={() => latestAnalysis && generateDocxReport(chatOwnerId || 'Unknown', latestAnalysis, messages)}
+                        onClick={() => latestAnalysis && generateDocxReport(loggedInStudent || chatOwnerId || 'Unknown', latestAnalysis, messages)}
                         disabled={!latestAnalysis}
                         className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
                       >
@@ -995,7 +907,7 @@ Yêu cầu đầu ra (JSON):
                         Tải Word (.docx)
                       </button>
                       <button 
-                        onClick={() => latestAnalysis && generatePptxReport(chatOwnerId || 'Unknown', latestAnalysis)}
+                        onClick={() => latestAnalysis && generatePptxReport(loggedInStudent || chatOwnerId || 'Unknown', latestAnalysis)}
                         disabled={!latestAnalysis}
                         className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 disabled:opacity-50"
                       >
@@ -1003,8 +915,10 @@ Yêu cầu đầu ra (JSON):
                         Tải PowerPoint (.pptx)
                       </button>
                     </div>
+
                   </div>
                 </div>
+
 
                 <h3 className="text-xl font-bold text-gray-800 font-heading mb-4 mt-8 flex items-center gap-2">
                   <ShieldAlert className="w-6 h-6 text-teal-600" />
