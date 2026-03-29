@@ -32,6 +32,7 @@ interface User {
   role: 'student' | 'teacher';
   lastActive: Date;
   totalAccesses: number;
+  points: number;
 }
 
 // In-memory store (Real data for the current session)
@@ -69,7 +70,8 @@ async function startServer() {
         uid: id,
         role: role,
         lastActive: new Date(),
-        totalAccesses: 0
+        totalAccesses: 0,
+        points: 0
       };
     }
     users[id].totalAccesses += 1;
@@ -86,9 +88,10 @@ async function startServer() {
     };
     messages.push(message);
     
-    // Update user activity
-    if (users[message.studentId]) {
+    // Update user activity and points
+    if (users[message.studentId] && message.sender === 'student') {
       users[message.studentId].lastActive = new Date();
+      users[message.studentId].points += 10; // Award 10 points per message
     }
     
     res.json(message);

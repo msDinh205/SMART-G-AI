@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
-import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { AlertTriangle, CheckCircle, Info, ShieldAlert, ShieldCheck, Share2, Loader2, Send, Activity, ListChecks, Smartphone, BellRing, ArrowRight, CheckCircle2, User, GraduationCap, Users, LogOut, KeyRound, Mountain, Sun, Sprout, TreePine, Smile, Heart, MessageCircleHeart, PieChart as PieChartIcon, FileText, Presentation } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
+import { generateDocxReport, generatePptxReport } from './utils/reportGenerator';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -37,6 +38,8 @@ export default function App() {
   const [loggedInStudent, setLoggedInStudent] = useState<string | null>(null);
   const [loggedInTeacher, setLoggedInTeacher] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [studentPoints, setStudentPoints] = useState(0);
+  const [studentLevel, setStudentLevel] = useState(1);
 
   // Stats States
   const [totalAccesses, setTotalAccesses] = useState(0);
@@ -48,6 +51,7 @@ export default function App() {
     { name: 'Xích mích bạn bè', value: 0, color: '#eab308' },
     { name: 'Tình cảm tuổi teen', value: 0, color: '#ec4899' },
   ]);
+  const [sentimentTrend, setSentimentTrend] = useState<{name: string, value: number}[]>([]);
 
   // Chat & Analysis States
   const [inputText, setInputText] = useState('');
@@ -94,6 +98,17 @@ export default function App() {
             setLatestAnalysis(data.latestAlert);
             setChatOwnerId(data.latestAlertStudentId);
           }
+
+          // Mock Sentiment Trend for Demo
+          setSentimentTrend([
+            { name: 'Th 2', value: 20 },
+            { name: 'Th 3', value: 45 },
+            { name: 'Th 4', value: 30 },
+            { name: 'Th 5', value: 70 },
+            { name: 'Th 6', value: 40 },
+            { name: 'Th 7', value: 65 },
+            { name: 'CN', value: 50 },
+          ]);
         }
       } catch (err) {
         console.error("Fetch Stats Error:", err);
@@ -180,8 +195,11 @@ export default function App() {
           body: JSON.stringify({ id, role: 'student' })
         });
         if (response.ok) {
+          const data = await response.json();
           setLoggedInStudent(id);
           setChatOwnerId(id);
+          setStudentPoints(data.points || 0);
+          setStudentLevel(Math.floor((data.points || 0) / 100) + 1);
         } else {
           throw new Error("Không thể đăng nhập.");
         }
@@ -323,6 +341,12 @@ Yêu cầu đầu ra (JSON):
             requiresTeacherIntervention: parsedResult.requiresTeacherIntervention,
             analysis: parsedResult
           })
+        });
+
+        setStudentPoints(prev => {
+          const newPoints = prev + 10;
+          setStudentLevel(Math.floor(newPoints / 100) + 1);
+          return newPoints;
         });
 
         const aiMsg: Message = {
@@ -528,9 +552,15 @@ Yêu cầu đầu ra (JSON):
                       </div>
                       <div>
                         <h2 className="font-bold text-green-800 font-heading text-xl">Mầm Xanh</h2>
-                        <p className="text-sm text-green-600 flex items-center gap-1 font-medium">
-                          Luôn lắng nghe em
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs font-bold text-green-600 bg-white/50 px-2 py-0.5 rounded-full border border-green-200">
+                            Cấp {studentLevel}
+                          </p>
+                          <div className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                            <Sun className="w-3 h-3 fill-amber-500" />
+                            {studentPoints} điểm
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -779,6 +809,63 @@ Yêu cầu đầu ra (JSON):
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Dashboard Nâng cao: Xu hướng tâm lý */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                  <div className="bg-white rounded-[2rem] border-2 border-gray-100 p-6 shadow-sm">
+                    <h3 className="text-lg font-bold text-gray-800 font-heading mb-6 flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-indigo-600" />
+                      Chỉ số tích cực theo tuần
+                    </h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={sentimentTrend}>
+                          <defs>
+                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+                          <YAxis hide />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Area type="monotone" dataKey="value" stroke="#6366f1" fillOpacity={1} fill="url(#colorValue)" strokeWidth={3} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-[2rem] border-2 border-gray-100 p-6 shadow-sm flex flex-col justify-center items-center text-center">
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4">
+                      <ShieldCheck className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800 font-heading mb-2">Xuất báo cáo chuyên môn</h3>
+                    <p className="text-gray-500 mb-6 text-sm px-8">
+                      Tải xuống hồ sơ tâm lý và lộ trình hỗ trợ học sinh dưới dạng văn bản hoặc trình chiếu.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-4">
+                      <button 
+                        onClick={() => latestAnalysis && generateDocxReport(chatOwnerId || 'Unknown', latestAnalysis, messages)}
+                        disabled={!latestAnalysis}
+                        className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
+                      >
+                        <FileText className="w-5 h-5" />
+                        Tải Word (.docx)
+                      </button>
+                      <button 
+                        onClick={() => latestAnalysis && generatePptxReport(chatOwnerId || 'Unknown', latestAnalysis)}
+                        disabled={!latestAnalysis}
+                        className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 disabled:opacity-50"
+                      >
+                        <Presentation className="w-5 h-5" />
+                        Tải PowerPoint (.pptx)
+                      </button>
+                    </div>
                   </div>
                 </div>
 
