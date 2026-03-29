@@ -64,6 +64,8 @@ interface Message {
 
 export default function App() {
   const [role, setRole] = useState<'student' | 'teacher'>('student');
+  const [apiKeyInput, setApiKeyInput] = useState(localStorage.getItem('user_gemini_key') || '');
+  const [showKeyInput, setShowKeyInput] = useState(false);
   
   // Auth States
   const [studentIdInput, setStudentIdInput] = useState('');
@@ -333,6 +335,16 @@ export default function App() {
     setIsAnalyzing(true);
     setError(null);
 
+    const userStoredKey = localStorage.getItem('user_gemini_key');
+    const effectiveApiKey = userStoredKey || (process.env.GEMINI_API_KEY as string) || '';
+
+    if (!effectiveApiKey) {
+      setError("Thiếu API Key. Vui lòng nhấn vào biểu tượng chìa khóa để nhập key.");
+      setIsAnalyzing(false);
+      setShowKeyInput(true);
+      return;
+    }
+
     try {
       // Save Student Message to API (with local fallback)
       try {
@@ -375,8 +387,8 @@ Yêu cầu đầu ra (JSON):
 - teacherSuggestions: 03 bước can thiệp cho giáo viên.
 - topic: Chọn một trong các chủ đề sau: "Áp lực học tập", "Nhớ nhà / Gia đình", "Xích mích bạn bè", "Tình cảm tuổi teen", "Khác".`;
 
-        chatRef.current = ai.chats.create({
-          model: 'gemini-3-flash-preview',
+        chatRef.current = new GoogleGenAI({ apiKey: effectiveApiKey }).chats.create({
+          model: 'gemini-1.5-flash',
           config: {
             systemInstruction,
             responseMimeType: 'application/json',
@@ -507,6 +519,15 @@ Yêu cầu đầu ra (JSON):
           </div>
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            {/* API Key Button */}
+            <button 
+              onClick={() => setShowKeyInput(!showKeyInput)}
+              className={`p-2 rounded-xl transition-all ${apiKeyInput || (process.env.GEMINI_API_KEY) ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50 animate-pulse'}`}
+              title="Cấu hình API Key"
+            >
+              <KeyRound className="w-5 h-5" />
+            </button>
+
             {/* Share Button */}
             <button 
               onClick={handleShare}
@@ -555,6 +576,42 @@ Yêu cầu đầu ra (JSON):
           </div>
         </div>
       </header>
+
+      {/* API Key Modal/Input */}
+      {showKeyInput && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl border-2 border-orange-100">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <KeyRound className="w-6 h-6 text-orange-500" />
+              Cấu hình Gemini API Key
+            </h3>
+            <p className="text-sm text-gray-500 mb-6 font-medium leading-relaxed">
+              Dán API Key của bạn vào đây để sử dụng AI. Key này được lưu cục bộ trên thiết bị của bạn.
+            </p>
+            <input 
+              type="password"
+              placeholder="Nhập API Key (AI Studio)..."
+              value={apiKeyInput}
+              onChange={(e) => {
+                setApiKeyInput(e.target.value);
+                localStorage.setItem('user_gemini_key', e.target.value);
+              }}
+              className="w-full p-4 bg-orange-50/50 border-2 border-orange-100 rounded-2xl focus:border-orange-400 focus:ring-0 mb-6 transition-all"
+            />
+            <button 
+              onClick={() => setShowKeyInput(false)}
+              className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-100 hover:bg-orange-600 transition-all"
+            >
+              Xác nhận và đóng
+            </button>
+            <p className="mt-4 text-center">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-xs text-orange-600 hover:underline font-bold">
+                Lấy API Key miễn phí tại đây (Google AI Studio)
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
